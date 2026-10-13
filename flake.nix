@@ -102,22 +102,39 @@
             pkgs.go
           ];
         };
-      }
-      // lib.optionalAttrs (system == "x86_64-linux") {
-        # zot-referrers exercises the NixOS MODULE: DynamicUser,
-        # LoadCredential-fed htpasswd, systemd hardening, StateDirectory,
-        # and the anonymous-pull/authenticated-push access policy.
-        #
-        # Needs KVM: runNixOSTest is VM-based. A shared-vCPU cloud instance
-        # may not expose /dev/kvm at all, and an argunix builder that cannot
-        # verify it no longer advertises the feature, so this check will sit
-        # unscheduled rather than fail fast. Uncomment once a builder with
-        # /dev/kvm is enrolled.
-        #
-        # The image's own behavioural test lives in the images repository,
-        # which is the point of the split: a module regression and an image
-        # regression are now separately red.
-        checks.zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
+        checks = {
+          # Assertions on what the module GENERATES: the zot config file and
+          # the systemd unit, both read straight out of the evaluation. No VM,
+          # so no /dev/kvm, so this one actually runs on the dev instance --
+          # which is why it exists, with the behavioural test below grounded.
+          #
+          # nixosSystem is passed in rather than reached for inside the test,
+          # so the nixpkgs it evaluates against is this flake's pinned one and
+          # nothing else.
+          zot-module-config = pkgs.callPackage ./tests/module-config.nix {
+            nixosSystem =
+              modules:
+              inputs.nixpkgs.lib.nixosSystem {
+                modules = modules ++ [ { nixpkgs.hostPlatform = system; } ];
+              };
+          };
+
+          # zot-referrers exercises the MODULE AT RUNTIME: DynamicUser,
+          # LoadCredential-fed htpasswd, systemd hardening, StateDirectory,
+          # and that the native Referrers API really answers.
+          #
+          # Needs KVM: runNixOSTest is VM-based. A shared-vCPU cloud instance
+          # may not expose /dev/kvm at all, and an argunix builder that cannot
+          # verify it no longer advertises the feature, so this check will sit
+          # unscheduled rather than fail fast. Uncomment once a builder with
+          # /dev/kvm is enrolled.
+          #
+          # The image's own behavioural test lives in the images repository,
+          # which is the point of the split: a module regression and an image
+          # regression are now separately red.
+          #
+          # zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
+        };
       }
     );
 }

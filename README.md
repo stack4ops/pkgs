@@ -20,6 +20,7 @@ repository.
 | `pkgs/zot.nix` | the zot binary (`buildGoModule`, minimal build, no extensions) |
 | `modules/zot.nix` | `services.zot` -- DynamicUser, systemd hardening, htpasswd via `LoadCredential` |
 | `overlay.nix` | exposes `pkgs.zot` |
+| `tests/module-config.nix` | assertions on the generated config and unit (no KVM) |
 | `tests/zot-referrers.nix` | behavioural test of the module (needs KVM, see below) |
 
 ## Outputs
@@ -87,23 +88,38 @@ line in `pkgs/zot.nix` turns them on.
 
 ## Tests
 
-`tests/zot-referrers.nix` boots a VM running the module, pushes an artifact,
-attaches a referrer and asserts it is discoverable through the *native*
-`/v2/<name>/referrers/<digest>` endpoint rather than only through oras'
-fallback to the Referrers Tag Schema. That distinction is the reason this
-registry was chosen (ADR-006), so it is the assertion that carries the weight.
-
-It needs `/dev/kvm`, and the `checks` block in `flake.nix` is therefore
-commented out. Locally:
+`tests/module-config.nix` reads what the module *generates* -- the zot config
+file and the systemd unit, both straight out of the evaluation -- and asserts
+on the things that break silently: the port as a string rather than a number
+(zot rejects a number at startup with an unhelpful message), the
+`/run/credentials/zot.service/htpasswd` path rather than a `%d` specifier zot
+would never expand, `deleteReferrers = false`, anonymous pull, `DynamicUser`,
+`StateDirectory`, `ProtectSystem`, and that both of the module's own assertions
+fire when they should. It is a plain derivation, so it needs no VM and runs on
+any builder:
 
 ```sh
-nix build .#checks.x86_64-linux.zot-referrers   # after uncommenting
+nix build .#checks.x86_64-linux.zot-module-config
+```
+
+`tests/zot-referrers.nix` is the behavioural half: boot a VM running the
+module, push an artifact, attach a referrer and assert it is discoverable
+through the *native* `/v2/<name>/referrers/<digest>` endpoint rather than only
+through oras' fallback to the Referrers Tag Schema. That distinction is the
+reason this registry was chosen (ADR-006), so it is the assertion that carries
+the weight.
+
+It needs `/dev/kvm`, and is therefore commented out in `flake.nix`. Run it
+locally, where KVM exists, before pushing:
+
+```sh
+nix build .#checks.x86_64-linux.zot-referrers -L   # after uncommenting
 ```
 
 On the argunix dev instance it will not run until a builder with `/dev/kvm` is
 enrolled. A builder that cannot verify the device no longer advertises the
-`kvm` feature, so the check sits unscheduled rather than failing with a
-confusing boot log.
+`kvm` feature, so the check fails fast with the scheduler's capability dump
+rather than hanging in `queued`.
 
 ## CI
 

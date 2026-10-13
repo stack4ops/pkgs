@@ -8,6 +8,13 @@
 
 buildGoModule rec {
   pname = "zot";
+
+  # The '# renovate:' comment is what the shared preset's regex manager keys
+  # on; without it this line is invisible to Renovate. The leading 'v' in
+  # upstream tags is stripped by the preset's extractVersionTemplate, and
+  # src.rev puts it back.
+  #
+  # renovate: datasource=github-releases depName=project-zot/zot
   version = "2.1.17";
 
   src = fetchFromGitHub {
