@@ -115,7 +115,7 @@
             nixosSystem =
               modules:
               inputs.nixpkgs.lib.nixosSystem {
-                modules = modules ++ [ { nixpkgs.hostPlatform = system; } ];
+                modules = modules ++ [ { nixpkgs.pkgs = pkgs; } ];
               };
           };
 
