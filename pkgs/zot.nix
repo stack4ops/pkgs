@@ -2,11 +2,15 @@
 # image and any NixOS consumer reuse the identical derivation.
 {
   lib,
-  buildGoModule,
+  buildGo127Module,
   fetchFromGitHub,
 }:
 
-buildGoModule rec {
+# zot 2.1.22 verlangt Go >= 1.27, der Default dieses nixpkgs-Zweigs ist 1.26.
+# Ein Release-Branch bewegt seinen Default-Go nicht mehr, also wird die
+# Toolchain hier explizit benannt statt auf nixpkgs zu warten. Beim naechsten
+# Sprung der zot-Anforderung wandert diese Zeile mit.
+buildGo127Module rec {
   pname = "zot";
 
   # The '# renovate:' comment is what the shared preset's regex manager keys
@@ -21,10 +25,10 @@ buildGoModule rec {
     owner = "project-zot";
     repo = "zot";
     rev = "v${version}";
-    hash = "sha256-/1QEMpDq8okaVWhaynlJ+tE1b6AObUnHfHrmnylBKL0=";
+    hash = "sha256-b6b1wQI1KjiNDZUuo5bQ1oFEov3rdBv99mM7gpjSwmI=";
   };
 
-  vendorHash = "sha256-09LQKBKyqpgBbC44VPsZ3RJcwrHWy6TpF87u35UgcYI=";
+  vendorHash = "sha256-jfHzB7kRiMfrUQrNHrKuAROQ0OPCf/r97jSp1DwWLEc=";
 
   subPackages = [ "cmd/zot" ];
 
