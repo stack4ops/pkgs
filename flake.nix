@@ -103,21 +103,21 @@
           ];
         };
       }
-      # // lib.optionalAttrs (system == "x86_64-linux") {
-      #   # zot-referrers exercises the NixOS MODULE: DynamicUser,
-      #   # LoadCredential-fed htpasswd, systemd hardening, StateDirectory,
-      #   # and the anonymous-pull/authenticated-push access policy.
-      #   #
-      #   # Needs KVM: runNixOSTest is VM-based. A shared-vCPU cloud instance
-      #   # may not expose /dev/kvm at all, and an argunix builder that cannot
-      #   # verify it no longer advertises the feature, so this check will sit
-      #   # unscheduled rather than fail fast. Uncomment once a builder with
-      #   # /dev/kvm is enrolled.
-      #   #
-      #   # The image's own behavioural test lives in the images repository,
-      #   # which is the point of the split: a module regression and an image
-      #   # regression are now separately red.
-      #   checks.zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
-      # }
+      // lib.optionalAttrs (system == "x86_64-linux") {
+        # zot-referrers exercises the NixOS MODULE: DynamicUser,
+        # LoadCredential-fed htpasswd, systemd hardening, StateDirectory,
+        # and the anonymous-pull/authenticated-push access policy.
+        #
+        # Needs KVM: runNixOSTest is VM-based. A shared-vCPU cloud instance
+        # may not expose /dev/kvm at all, and an argunix builder that cannot
+        # verify it no longer advertises the feature, so this check will sit
+        # unscheduled rather than fail fast. Uncomment once a builder with
+        # /dev/kvm is enrolled.
+        #
+        # The image's own behavioural test lives in the images repository,
+        # which is the point of the split: a module regression and an image
+        # regression are now separately red.
+        checks.zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
+      }
     );
 }
