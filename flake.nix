@@ -109,8 +109,15 @@
           # which is why it exists, with the behavioural test below grounded.
           #
           # nixosSystem is passed in rather than reached for inside the test,
-          # so the nixpkgs it evaluates against is this flake's pinned one and
-          # nothing else.
+          # so the nixpkgs it evaluates against is this flake's pinned one.
+          #
+          # `nixpkgs.pkgs = pkgs` hands it the instance built above, overlay
+          # and all. Without it nixosSystem instantiates a FRESH nixpkgs that
+          # has never seen overlay.nix, and the module's
+          # `default = pkgs.zot` fails with "attribute 'zot' missing" --
+          # confusingly pointing at the module rather than at the caller.
+          # It is also the cheaper route: one nixpkgs instance, not two, and
+          # the very same zot derivation the package output builds.
           zot-module-config = pkgs.callPackage ./tests/module-config.nix {
             nixosSystem =
               modules:

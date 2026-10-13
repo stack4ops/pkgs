@@ -123,8 +123,21 @@ rather than hanging in `queued`.
 
 ## CI
 
-Watched by argunix. argunix builds every attribute of every system in
-`services.argunix.systems` and publishes only outputs carrying
-`meta.image-format` -- nothing here does, so this repository is a build and
-test target only, and doubles as cache warming for the images repository,
-which builds its image from the identical `zot` derivation.
+`.github/workflows/ci.yml` runs `nix flake check -L` on every pull request
+and on `main`. That is the merge gate: branch protection on `main` requires
+the "flake check" job and has "Allow auto-merge" enabled, so a Renovate PR
+waits for it instead of merging the moment it opens.
+
+argunix deliberately does **not** watch this repository. argunix exists to
+build and publish artefacts, and nothing here carries `meta.image-format`, so
+it would publish nothing; and the check that gates a merge belongs where the
+merge decision is made, which is GitHub. argunix enters one step later, in
+[stack4ops/images](https://github.com/stack4ops/images), which consumes this
+repository's overlay.
+
+Open option, recorded so it does not simply drop out of sight: argunix could
+watch this repository *in addition*, publishing nothing, purely as the signal
+"can my own infrastructure still build this". That is the dogfooding the dev
+instance exists for (ADR-003), and giving it up is the one real cost of
+gating on a GitHub runner. The merge gate would stay where it is -- the two
+answer different questions.
