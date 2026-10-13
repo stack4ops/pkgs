@@ -1,0 +1,81 @@
+name: ci
+# The merge gate for this repository.
+#
+# argunix does not watch stack4ops/pkgs: it exists to build and publish
+# artefacts, and nothing here carries meta.image-format. The check that
+# branch protection requires therefore has to come from where the merge
+# decision is made, which is GitHub.
+#
+# Branch protection on main: require the job below ("flake check") and enable
+# "Allow auto-merge". Without a required check GitHub merges a Renovate PR the
+# moment it opens.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  # nix-hash-fixup pushes a corrected head onto Renovate branches. The run
+  # against the stale-hash commit is pointless once that lands, so cancel it.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: flake check
+    runs-on: ubuntu-latest
+
+    # Same image as nix-hash-fixup, digest-pinned, kept current by Renovate's
+    # github-actions manager. Measured contents: bash, git, nix 2.34, tar,
+    # gzip under /root/.nix-profile/bin; no glibc loader, which is why this
+    # job carries no JS actions (see the checkout step).
+    container:
+      image: registry.opencode.de/oci-community/images/applicative-systems/nix/nix:main@sha256:cc3b04a28fe3a8b4945d6375cb25c96d033b7db8663e28443315284d5d825e4b
+
+    permissions:
+      contents: read
+
+    env:
+      # `extra-` appends rather than replacing whatever the image's own
+      # nix.conf enables.
+      NIX_CONFIG: |
+        extra-experimental-features = nix-command flakes
+
+    steps:
+      - name: Verify the image toolchain
+        run: |
+          profile=/root/.nix-profile/bin
+          if ! command -v nix >/dev/null 2>&1 && [ -x "$profile/nix" ]; then
+            echo "nix not on PATH, adding $profile"
+            echo "$profile" >> "$GITHUB_PATH"
+            export PATH="$profile:$PATH"
+          fi
+          command -v nix >/dev/null 2>&1 || {
+            echo "::error::no nix in this image -- PATH is $PATH"
+            exit 1
+          }
+          nix --version
+          git --version
+
+      - name: Check out the commit under test
+        env:
+          # Read-only, so the job's own GITHUB_TOKEN is enough. nix-hash-fixup
+          # needs a PAT instead, because a push made with GITHUB_TOKEN triggers
+          # no workflows and this job would never run on the corrected head.
+          TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.head_ref || github.ref_name }}
+        run: |
+          git init -q .
+          git config --global --add safe.directory "$PWD"
+          git remote add origin "https://x-access-token:$TOKEN@github.com/$REPO.git"
+          git fetch -q --no-tags origin "+refs/heads/$REF:refs/remotes/origin/$REF"
+          git checkout -q -B "$REF" "refs/remotes/origin/$REF"
+          git log -1 --format='testing %h %s'
+
+      # Evaluates every output and builds the checks for this system: zot
+      # itself, and zot-module-config. zot-referrers stays commented out in
+      # flake.nix -- it is runNixOSTest and wants /dev/kvm, which a standard
+      # runner does not reliably offer. Run that one locally before pushing.
+      - name: nix flake check
+        run: nix flake check -L
