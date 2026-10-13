@@ -12,7 +12,7 @@ jobs:
     # Renovate branches only. A hand-written PR that gets the hashes wrong
     # should fail its build and be fixed by hand, not silently rewritten.
     if: startsWith(github.head_ref, 'renovate/')
-    uses: stack4ops/renovate/.github/workflows/nix-hash-fixup.yml@main
+    uses: stack4ops/renovate/.github/workflows/nix-hash-fixup.yml@c73d568a7fc40003a2ac4887e0b363a2611fdd10 # main
     with:
       # Flake package attributes. One per package in this repository; the
       # name follows packages.<system>.<attr>, so `zot`, not `zot-bin`.
