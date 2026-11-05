@@ -19,7 +19,7 @@ buildGo127Module rec {
   # src.rev puts it back.
   #
   # renovate: datasource=github-releases depName=project-zot/zot
-  version = "2.1.22";
+  version = "2.1.23";
 
   src = fetchFromGitHub {
     owner = "project-zot";
