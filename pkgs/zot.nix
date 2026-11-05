@@ -19,16 +19,16 @@ buildGo127Module rec {
   # src.rev puts it back.
   #
   # renovate: datasource=github-releases depName=project-zot/zot
-  version = "2.1.22";
+  version = "2.1.23";
 
   src = fetchFromGitHub {
     owner = "project-zot";
     repo = "zot";
     rev = "v${version}";
-    hash = "sha256-b6b1wQI1KjiNDZUuo5bQ1oFEov3rdBv99mM7gpjSwmI=";
+    hash = "sha256-Q21qFoZzOpJe7oJP4RSGiBvhPF9znCF2ndegsVSHQnY=";
   };
 
-  vendorHash = "sha256-jfHzB7kRiMfrUQrNHrKuAROQ0OPCf/r97jSp1DwWLEc=";
+  vendorHash = "sha256-ILHn4EUCHLpwdgSj/CBlX58R1D2zJhr+H6HkcAOdhis=";
 
   subPackages = [ "cmd/zot" ];
 
