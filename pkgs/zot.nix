@@ -25,10 +25,10 @@ buildGo127Module rec {
     owner = "project-zot";
     repo = "zot";
     rev = "v${version}";
-    hash = "sha256-b6b1wQI1KjiNDZUuo5bQ1oFEov3rdBv99mM7gpjSwmI=";
+    hash = "sha256-Q21qFoZzOpJe7oJP4RSGiBvhPF9znCF2ndegsVSHQnY=";
   };
 
-  vendorHash = "sha256-jfHzB7kRiMfrUQrNHrKuAROQ0OPCf/r97jSp1DwWLEc=";
+  vendorHash = "sha256-ILHn4EUCHLpwdgSj/CBlX58R1D2zJhr+H6HkcAOdhis=";
 
   subPackages = [ "cmd/zot" ];
 
