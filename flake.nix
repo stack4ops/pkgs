@@ -14,10 +14,6 @@
       # Explicit rather than flake-utils' eachDefaultSystem, so the list is a
       # visible decision.
       #
-      # aarch64-linux is built under binfmt emulation on the x86_64 builder,
-      # not natively. That is fine for everything here except the behavioural
-      # test; see `checks` below for why that one is gated.
-      #
       # Two gates have to agree before any of this reaches CI: this list, and
       # `services.argunix.systems` on the coordinator. argunix only walks the
       # systems named there, so an entry here alone stays invisible.
@@ -27,6 +23,16 @@
         "x86_64-linux"
         "aarch64-linux"
       ];
+
+      # Which of the systems above are served by binfmt emulation rather than
+      # by a builder of that architecture.
+      #
+      # ONE LIST, TWO CONSEQUENCES, both below: the upstream Go test suite is
+      # skipped on an emulated system, and the behavioural test is not exposed
+      # for one. Both are the same question -- "is there a native builder for
+      # this?" -- so they are answered in one place. The day an aarch64 builder
+      # is enrolled, empty this list and both follow.
+      emulatedSystems = [ "aarch64-linux" ];
 
       eachSystem =
         systems: f:
@@ -57,6 +63,10 @@
       # exactly one nixpkgs instance in its closure and decides the pin
       # itself. Depending on `packages` instead would pin this flake's
       # nixpkgs into every consumer's closure.
+      #
+      # Deliberately unaffected by the doCheck decision below: that is a
+      # property of how THIS repository spends its CI time, not of the
+      # package. A consumer gets the package with its tests.
       overlays.default = import ./overlay.nix;
 
       # The module defaults `services.zot.package` to `pkgs.zot`, so a
@@ -69,7 +79,36 @@
       let
         pkgs = import inputs.nixpkgs {
           inherit system;
-          overlays = [ inputs.self.overlays.default ];
+          overlays = [
+            inputs.self.overlays.default
+          ]
+          # Skipping zot's own test suite where the architecture is emulated.
+          #
+          # `go test` has no separate runner: it compiles a test binary per
+          # package and then runs it. Natively that is 83 seconds of
+          # compilation for a 28 ms test -- and only for `cmd/zot`, because
+          # `subPackages` limits the test phase as well as the build, so none
+          # of pkg/api, pkg/storage or pkg/meta runs at all. Under qemu-user
+          # the same thing costs roughly an hour and measures the emulator
+          # more than the code.
+          #
+          # It stays ON natively: 83 seconds is not a bottleneck, and it is a
+          # free canary for a vendorHash that resolved to subtly different
+          # dependencies. Note that the thin coverage comes from
+          # `subPackages`, not from here -- relax that line and the native run
+          # picks the wider suite up by itself.
+          #
+          # THIS BELONGS IN THE pkgs INSTANCE, not in `packages`. Three other
+          # outputs reach for `pkgs.zot` -- apps, devShells, and
+          # zot-module-config through the module's `package` default -- and
+          # argunix builds devShells and checks. Overriding only the
+          # `packages` attribute would leave the slow derivation reachable
+          # through those, which is the same hour under a different name.
+          ++ lib.optional (lib.elem system emulatedSystems) (
+            _: prev: {
+              zot = prev.zot.overrideAttrs (_: { doCheck = false; });
+            }
+          );
         };
       in
       {
@@ -81,9 +120,9 @@
         # risk of a package accidentally being published: nothing here carries
         # meta.image-format, so argunix builds these and pushes none of them.
         #
-        # The aarch64 variant compiles under qemu-user. Expect it to take an
-        # order of magnitude longer than the native one, the Go test suite
-        # included -- correct, just slow.
+        # The aarch64 variant compiles under qemu-user and takes an order of
+        # magnitude longer than the native one. Its test suite is skipped; see
+        # the overlay note above.
         packages = {
           zot = pkgs.zot;
           default = pkgs.zot;
@@ -123,6 +162,11 @@
             # checks -- the generated config and unit -- is architecture
             # independent anyway.
             #
+            # It does pull the zot binary in, through the store path in the
+            # unit's ExecStart. That is why the doCheck override has to sit in
+            # the pkgs instance: otherwise this check alone would rebuild the
+            # slow variant.
+            #
             # nixosSystem is passed in rather than reached for inside the test,
             # so the nixpkgs it evaluates against is this flake's pinned one.
             #
@@ -147,23 +191,20 @@
           # systemd-nspawn container, so it needs no /dev/kvm -- only a builder
           # advertising `uid-range`.
           #
-          # x86_64 ONLY, AND THE GATE DEPENDS ON IT. The derivation requires
-          # `nixos-test`, and argunix counts that feature only on a builder
-          # whose NATIVE system matches: a builder serving aarch64 through
-          # binfmt cannot run an aarch64 container test meaningfully, so it is
-          # refused rather than scheduled. With no native aarch64 builder
-          # enrolled, exposing this for aarch64 puts the job in
-          # SkippedNoBuilder, which counts as interrupted, which turns the
-          # whole `argunix: evaluation` status to Error -- permanently red, on
-          # the one status branch protection requires.
-          #
-          # Widen this the day a native aarch64 builder with `uid-range` is
-          # enrolled, and not before.
+          # NOT EXPOSED FOR AN EMULATED SYSTEM, AND THE GATE DEPENDS ON IT.
+          # The derivation requires `nixos-test`, and argunix counts that
+          # feature only on a builder whose NATIVE system matches: a builder
+          # serving aarch64 through binfmt cannot run an aarch64 container
+          # test meaningfully, so it is refused rather than scheduled. Exposed
+          # anyway, the job lands in SkippedNoBuilder, which counts as
+          # interrupted, which turns the whole `argunix: evaluation` status to
+          # Error -- permanently red, on the one status branch protection
+          # requires.
           #
           # The image's own behavioural test lives in the images repository,
           # which is the point of the split: a module regression and an image
           # regression are separately red.
-          // lib.optionalAttrs (system == "x86_64-linux") {
+          // lib.optionalAttrs (!lib.elem system emulatedSystems) {
             zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
           };
       }
