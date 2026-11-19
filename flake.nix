@@ -27,11 +27,13 @@
       # Which of the systems above are served by binfmt emulation rather than
       # by a builder of that architecture.
       #
-      # ONE LIST, TWO CONSEQUENCES, both below: the upstream Go test suite is
-      # skipped on an emulated system, and the behavioural test is not exposed
-      # for one. Both are the same question -- "is there a native builder for
-      # this?" -- so they are answered in one place. The day an aarch64 builder
-      # is enrolled, empty this list and both follow.
+      # ONE LIST, AND EVERYTHING BELOW HANGS OFF IT. An emulated system gets
+      # the binary and nothing else: no devShell, no checks, and the binary
+      # built without its upstream test suite. Each of those has its own
+      # reason, given at the point where it happens.
+      #
+      # The day an aarch64 builder is enrolled, empty this list. Every
+      # consequence follows from that one edit.
       emulatedSystems = [ "aarch64-linux" ];
 
       eachSystem =
@@ -77,6 +79,8 @@
     // eachSystem systems (
       system:
       let
+        native = !lib.elem system emulatedSystems;
+
         pkgs = import inputs.nixpkgs {
           inherit system;
           overlays = [
@@ -98,13 +102,11 @@
           # `subPackages`, not from here -- relax that line and the native run
           # picks the wider suite up by itself.
           #
-          # THIS BELONGS IN THE pkgs INSTANCE, not in `packages`. Three other
-          # outputs reach for `pkgs.zot` -- apps, devShells, and
-          # zot-module-config through the module's `package` default -- and
-          # argunix builds devShells and checks. Overriding only the
-          # `packages` attribute would leave the slow derivation reachable
-          # through those, which is the same hour under a different name.
-          ++ lib.optional (lib.elem system emulatedSystems) (
+          # THIS BELONGS IN THE pkgs INSTANCE, not in `packages`. Several
+          # outputs reach for `pkgs.zot`, and overriding only the `packages`
+          # attribute would leave the slow derivation reachable through the
+          # others -- the same hour under a different attribute name.
+          ++ lib.optional (!native) (
             _: prev: {
               zot = prev.zot.overrideAttrs (_: { doCheck = false; });
             }
@@ -120,52 +122,59 @@
         # risk of a package accidentally being published: nothing here carries
         # meta.image-format, so argunix builds these and pushes none of them.
         #
-        # The aarch64 variant compiles under qemu-user and takes an order of
-        # magnitude longer than the native one. Its test suite is skipped; see
-        # the overlay note above.
+        # This is the ONLY output an emulated system gets. It compiles under
+        # qemu-user and takes an order of magnitude longer than the native
+        # one, with its test suite skipped per the overlay note above.
         packages = {
           zot = pkgs.zot;
           default = pkgs.zot;
         };
 
+        # Exposed for every system because it costs nothing: a wrapper around
+        # the binary that `packages` already builds, and argunix does not walk
+        # `apps` at all.
         apps.default = {
           type = "app";
           program = lib.getExe pkgs.zot;
           meta.description = "Run the zot registry";
         };
+      }
+      //
+        # Everything past this point is native-only, and for two different
+        # reasons rather than one blanket rule.
+        lib.optionalAttrs native {
+          # Nobody enters a devShell for an architecture they do not work on.
+          # argunix does walk `devShells`, so exposing it for an emulated
+          # system means building its closure for no reader.
+          devShells.default = pkgs.mkShell {
+            packages = [
+              pkgs.zot
+              # htpasswd, for generating the push credentials the module's
+              # htpasswdFile option wants.
+              pkgs.apacheHttpd
+              # Bumping zot: nix-update rewrites version, src.hash and
+              # vendorHash in pkgs/zot.nix in one pass. This is the manual
+              # fallback for when Renovate's postUpgradeTasks did not run --
+              # see "Updating zot" in the README.
+              pkgs.nix-update
+              # For reading the module graph when a bump moves vendorHash
+              # unexpectedly, which is the one case worth looking at.
+              pkgs.go
+            ];
+          };
 
-        devShells.default = pkgs.mkShell {
-          packages = [
-            pkgs.zot
-            # htpasswd, for generating the push credentials the module's
-            # htpasswdFile option wants.
-            pkgs.apacheHttpd
-            # Bumping zot: nix-update rewrites version, src.hash and
-            # vendorHash in pkgs/zot.nix in one pass. This is the manual
-            # fallback for when Renovate's postUpgradeTasks did not run --
-            # see "Updating zot" in the README.
-            pkgs.nix-update
-            # For reading the module graph when a bump moves vendorHash
-            # unexpectedly, which is the one case worth looking at.
-            pkgs.go
-          ];
-        };
-
-        checks =
-          {
+          checks = {
             # Assertions on what the module GENERATES: the zot config file and
-            # the systemd unit, both read straight out of the evaluation.
+            # the systemd unit, both read straight out of the evaluation. It
+            # asserts on the things that break silently -- the port as a
+            # string rather than a number, the credentials path rather than a
+            # %d specifier, deleteReferrers, anonymous pull, DynamicUser,
+            # StateDirectory, ProtectSystem.
             #
-            # Runs on every system in the list, aarch64 included: it is a plain
-            # derivation whose build is a shell script and some jq, so under
-            # emulation it is merely slow rather than meaningless. What it
-            # checks -- the generated config and unit -- is architecture
-            # independent anyway.
-            #
-            # It does pull the zot binary in, through the store path in the
-            # unit's ExecStart. That is why the doCheck override has to sit in
-            # the pkgs instance: otherwise this check alone would rebuild the
-            # slow variant.
+            # Native only, because every one of those is architecture
+            # independent: the generated config and unit differ between
+            # systems in store paths and nothing else. Running it twice
+            # restates the same answer at the price of a second evaluation.
             #
             # nixosSystem is passed in rather than reached for inside the test,
             # so the nixpkgs it evaluates against is this flake's pinned one.
@@ -184,29 +193,28 @@
                   modules = modules ++ [ { nixpkgs.pkgs = pkgs; } ];
                 };
             };
-          }
-          # zot-referrers exercises the MODULE AT RUNTIME: DynamicUser,
-          # LoadCredential-fed htpasswd, systemd hardening, StateDirectory,
-          # and that the native Referrers API really answers. Its node is a
-          # systemd-nspawn container, so it needs no /dev/kvm -- only a builder
-          # advertising `uid-range`.
-          #
-          # NOT EXPOSED FOR AN EMULATED SYSTEM, AND THE GATE DEPENDS ON IT.
-          # The derivation requires `nixos-test`, and argunix counts that
-          # feature only on a builder whose NATIVE system matches: a builder
-          # serving aarch64 through binfmt cannot run an aarch64 container
-          # test meaningfully, so it is refused rather than scheduled. Exposed
-          # anyway, the job lands in SkippedNoBuilder, which counts as
-          # interrupted, which turns the whole `argunix: evaluation` status to
-          # Error -- permanently red, on the one status branch protection
-          # requires.
-          #
-          # The image's own behavioural test lives in the images repository,
-          # which is the point of the split: a module regression and an image
-          # regression are separately red.
-          // lib.optionalAttrs (!lib.elem system emulatedSystems) {
+
+            # zot-referrers exercises the MODULE AT RUNTIME: DynamicUser,
+            # LoadCredential-fed htpasswd, systemd hardening, StateDirectory,
+            # and that the native Referrers API really answers. Its node is a
+            # systemd-nspawn container, so it needs no /dev/kvm -- only a
+            # builder advertising `uid-range`.
+            #
+            # Native only, and THE MERGE GATE DEPENDS ON IT. The derivation
+            # requires `nixos-test`, and argunix counts that feature only on a
+            # builder whose NATIVE system matches: a builder serving aarch64
+            # through binfmt cannot run an aarch64 container test
+            # meaningfully, so it is refused rather than scheduled. Exposed
+            # anyway, the job lands in SkippedNoBuilder, which counts as
+            # interrupted, which turns the whole `argunix: evaluation` status
+            # to Error -- permanently red, on the one status branch protection
+            # requires.
+            #
+            # The image's own behavioural test lives in the images repository,
+            # which is the point of the split: a module regression and an
+            # image regression are separately red.
             zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
           };
-      }
+        }
     );
 }
