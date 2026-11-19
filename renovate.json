@@ -1,4 +1,12 @@
 {
-  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["local>stack4ops/renovate"]
+  "packageRules": [
+    {
+      "matchDepNames": ["project-zot/zot"],
+      "postUpgradeTasks": {
+        "commands": ["nix-update --flake --version {{{newVersion}}} zot"],
+        "fileFilters": ["pkgs/zot.nix"],
+        "executionMode": "update"
+      }
+    }
+  ]
 }
