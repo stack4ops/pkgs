@@ -140,7 +140,7 @@
           # which is the point of the split: a module regression and an image
           # regression are now separately red.
           #
-          # zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
+          zot-referrers = pkgs.testers.runNixOSTest ./tests/zot-referrers.nix;
         };
       }
     );
